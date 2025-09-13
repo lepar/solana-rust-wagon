@@ -1,0 +1,23 @@
+[package]
+name = "solana-wagon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# HTTP server
+actix-web = "4.4"
+tokio = { version = "1.0", features = ["full", "rt-multi-thread"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Solana dependencies - stable v2.x versions (compatible with spl-associated-token-account 2.3)
+solana-client = "1.18"
+solana-sdk = "1.18"
+solana-program = "1.18"
+spl-token = "4.0"
+spl-associated-token-account = "2.3"
+
+# Utility dependencies
+anyhow = "1.0"
+thiserror = "1.0"
+hex = "0.4"
