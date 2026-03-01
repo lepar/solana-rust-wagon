@@ -7,6 +7,8 @@ mod server;
 
 use modules::nft::manager::NFTManager;
 use modules::token::manager::TokenManager;
+use modules::indexer::database::Database;
+use modules::indexer::background_job::BackgroundIndexer;
 use modules::Module;
 use server::create_app;
 
@@ -40,8 +42,21 @@ async fn main() -> Result<()> {
         NFTManager::new(&rpc_url, &payer_keypair_path).expect("Failed to initialize NFT manager"),
     );
 
+    // Initialize database and indexer
+    let database = Arc::new(
+        Database::from_env().await.expect("Failed to initialize database"),
+    );
+    let mut background_indexer = BackgroundIndexer::new(database.clone());
+    
+    // Start the background indexer
+    if let Err(e) = background_indexer.start().await {
+        eprintln!("Failed to start background indexer: {}", e);
+    }
+
     println!("✅ Token manager initialized successfully");
     println!("✅ NFT manager initialized successfully");
+    println!("✅ Database initialized successfully");
+    println!("✅ Background indexer started successfully");
 
     println!("📋 Available modules:");
     println!(
@@ -70,11 +85,29 @@ async fn main() -> Result<()> {
     println!("     POST /api/v1/nft-transfer");
     println!("     POST /api/v1/nft-burn");
 
+    println!(
+        "   🔹 Indexer Module (v{})",
+        crate::modules::indexer::IndexerModule::version()
+    );
+    println!(
+        "   🔹 Indexer Module (v{})",
+        crate::modules::indexer::IndexerModule::name()
+    );
+    println!("     GET  /api/v1/indexer/health");
+    println!("     GET  /api/v1/indexer/transactions");
+    println!("     GET  /api/v1/indexer/transactions/{{signature}}");
+    println!("     GET  /api/v1/indexer/nft/{{mint}}/metadata");
+    println!("     GET  /api/v1/indexer/subscriptions");
+
     // Start HTTP server
     println!("🌐 Starting HTTP server on http://0.0.0.0:{}", port);
 
     HttpServer::new(move || {
-        App::new().configure(create_app(token_manager.clone(), nft_manager.clone()))
+        App::new().configure(create_app(
+            token_manager.clone(), 
+            nft_manager.clone(),
+            database.clone(),
+        ))
     })
     .bind(format!("0.0.0.0:{}", port))?
     .run()

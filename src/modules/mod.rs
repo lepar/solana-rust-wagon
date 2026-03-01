@@ -14,3 +14,4 @@ pub trait Module {
 
 pub mod nft;
 pub mod token;
+pub mod indexer;

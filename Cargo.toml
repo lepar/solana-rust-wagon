@@ -21,3 +21,12 @@ spl-associated-token-account = "2.3"
 anyhow = "1.0"
 thiserror = "1.0"
 hex = "0.4"
+
+# Database dependencies
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Additional Solana dependencies
+solana-account-decoder = "1.18"
+solana-transaction-status = "1.18"

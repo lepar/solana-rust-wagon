@@ -9,7 +9,8 @@ Solana Wagon is built with a modular architecture that makes it easy to extend w
 ```
 src/modules/
 ├── token/          # SPL Token management
-└── nft/            # NFT management
+├── nft/            # NFT management
+└── indexer/        # Blockchain transaction indexer
 ```
 
 Each module is self-contained with its own:
@@ -40,11 +41,23 @@ Each module is self-contained with its own:
 
 📖 **[View NFT Module Documentation](src/modules/nft/README.md)**
 
+### 🔹 Indexer Module (v0.1.0)
+- Real-time blockchain transaction indexing
+- PostgreSQL database storage
+- WebSocket subscriptions to Solana events
+- Token and NFT transaction tracking
+- RESTful API for querying indexed data
+- Background job for continuous indexing
+
+📖 **[View Indexer Module Documentation](src/modules/indexer/README.md)**
+
 ## ✨ Features
 
 - **Modular Design**: Easy to add new modules (DeFi, Gaming, etc.)
 - **RESTful API**: Clean JSON-based HTTP endpoints
 - **Solana Integration**: Full SPL token and NFT support
+- **Real-time Indexing**: Live blockchain transaction monitoring
+- **Database Storage**: PostgreSQL-based data persistence
 - **Devnet Ready**: Configured for Solana devnet testing
 - **Extensible**: Simple trait-based module system
 
@@ -76,14 +89,45 @@ solana config set --url https://solana-devnet.gateway.tatum.io
 solana airdrop 2 $(solana-keygen pubkey payer-keypair.json)
 ```
 
-### 3. Environment Variables (Optional)
+### 3. Environment Configuration
 
-You can customize the configuration using environment variables:
+Create a `.env` file from the example:
 
 ```bash
-export SOLANA_RPC_URL="https://solana-devnet.gateway.tatum.io"
-export PAYER_KEYPAIR_PATH="./payer-keypair.json"
-export PORT="3000"
+cp .env.example .env
+```
+
+Configure the required environment variables:
+
+```bash
+# Solana Configuration
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+PAYER_KEYPAIR_PATH=./payer-keypair.json
+
+# Database Configuration (required for indexer)
+DATABASE_URL=postgresql://username:password@localhost:5432/solana_indexer
+
+# Server Configuration
+PORT=3000
+
+# Optional: Custom WebSocket URL
+SOLANA_WEBSOCKET_URL=wss://api.mainnet-beta.solana.com
+```
+
+### 4. Database Setup (Required for Indexer)
+
+The indexer module requires a PostgreSQL database:
+
+```bash
+# Install PostgreSQL (Ubuntu/Debian)
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+
+# Create database
+sudo -u postgres createdb solana_indexer
+
+# Create user (optional)
+sudo -u postgres createuser --interactive
 ```
 
 ## Running the Application
@@ -117,6 +161,7 @@ For detailed API documentation and examples, see the individual module READMEs:
 
 - **Token Module**: [src/modules/token/README.md](src/modules/token/README.md)
 - **NFT Module**: [src/modules/nft/README.md](src/modules/nft/README.md)
+- **Indexer Module**: [src/modules/indexer/README.md](src/modules/indexer/README.md)
 
 ---
 
@@ -126,6 +171,7 @@ For detailed examples and usage instructions, see the individual module document
 
 - **Token Module Examples**: [src/modules/token/README.md#examples](src/modules/token/README.md#examples)
 - **NFT Module Examples**: [src/modules/nft/README.md#examples](src/modules/nft/README.md#examples)
+- **Indexer Module Examples**: [src/modules/indexer/README.md#examples](src/modules/indexer/README.md#examples)
 
 ## Error Handling
 
@@ -143,6 +189,8 @@ Common error scenarios:
 - Insufficient funds for transaction fees
 - Token account doesn't exist
 - Invalid token amounts
+- Database connection errors (indexer module)
+- WebSocket connection failures (indexer module)
 - Network connectivity issues
 
 ## 🔧 Extending the Architecture
