@@ -7,9 +7,10 @@ mod server;
 
 use modules::nft::manager::NFTManager;
 use modules::token::manager::TokenManager;
-use modules::indexer::database::Database;
-use modules::indexer::background_job::BackgroundIndexer;
-use modules::Module;
+use crate::modules::indexer::database::Database;
+use crate::modules::indexer::background_job::BackgroundIndexer;
+use crate::modules::indexer::subscription_manager::SubscriptionManager;
+use crate::modules::Module;
 use server::create_app;
 
 #[actix_web::main]
@@ -46,10 +47,29 @@ async fn main() -> Result<()> {
     let database = Arc::new(
         Database::from_env().await.expect("Failed to initialize database"),
     );
-    let mut background_indexer = BackgroundIndexer::new(database.clone());
+    
+    // Initialize RPC client
+    let rpc_url = std::env::var("SOLANA_RPC_URL")
+        .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string());
+    let rpc_client = Arc::new(solana_client::rpc_client::RpcClient::new(rpc_url));
+    
+    // Initialize subscription manager
+    let (transaction_tx, transaction_rx) = tokio::sync::mpsc::unbounded_channel();
+    let subscription_manager = Arc::new(SubscriptionManager::new(
+        database.clone(),
+        rpc_client.clone(),
+        transaction_tx,
+    ));
+    
+    // Initialize existing subscriptions
+    if let Err(e) = subscription_manager.initialize_existing_subscriptions().await {
+        eprintln!("Failed to initialize existing subscriptions: {}", e);
+    }
+    
+    let mut background_indexer = BackgroundIndexer::new(database.clone(), subscription_manager.clone());
     
     // Start the background indexer
-    if let Err(e) = background_indexer.start().await {
+    if let Err(e) = background_indexer.start_with_receiver(transaction_rx).await {
         eprintln!("Failed to start background indexer: {}", e);
     }
 
@@ -107,6 +127,7 @@ async fn main() -> Result<()> {
             token_manager.clone(), 
             nft_manager.clone(),
             database.clone(),
+            subscription_manager.clone(),
         ))
     })
     .bind(format!("0.0.0.0:{}", port))?

@@ -4,6 +4,18 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::modules::indexer::database::Database;
+use crate::modules::indexer::subscription_manager::{SubscriptionManager, ActiveSubscription};
+
+#[derive(Debug, Serialize)]
+pub struct SubscriptionResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub program_ids: Vec<String>,
+    pub account_addresses: Vec<String>,
+    pub websocket_url: String,
+    pub is_running: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
 
 #[derive(Debug, Serialize)]
 pub struct TransactionResponse {
@@ -32,6 +44,14 @@ pub struct NftMetadataResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CreateSubscriptionRequest {
+    pub name: String,
+    pub program_ids: Vec<String>,
+    pub account_addresses: Vec<String>,
+    pub websocket_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct TransactionQuery {
     pub program_id: Option<String>,
     pub transaction_type: Option<String>,
@@ -46,6 +66,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/transactions/{signature}", web::get().to(get_transaction))
             .route("/nft/{mint}/metadata", web::get().to(get_nft_metadata))
             .route("/subscriptions", web::get().to(get_subscriptions))
+            .route("/subscriptions", web::post().to(create_subscription))
+            .route("/subscriptions/{id}", web::delete().to(remove_subscription))
+            .route("/subscriptions/{id}", web::get().to(get_subscription))
             .route("/health", web::get().to(health_check))
     );
 }
@@ -147,14 +170,104 @@ async fn get_nft_metadata(
 }
 
 async fn get_subscriptions(
-    db: web::Data<Arc<Database>>,
+    subscription_manager: web::Data<Arc<SubscriptionManager>>,
 ) -> Result<HttpResponse> {
-    match db.get_subscription_configs().await {
-        Ok(subscriptions) => Ok(HttpResponse::Ok().json(subscriptions)),
+    match subscription_manager.get_active_subscriptions().await {
+        Ok(subscriptions) => {
+            let response: Vec<SubscriptionResponse> = subscriptions
+                .into_iter()
+                .map(|sub| SubscriptionResponse {
+                    id: sub.id,
+                    name: format!("subscription_{}", sub.id),
+                    program_ids: sub.config.program_ids,
+                    account_addresses: sub.config.account_addresses,
+                    websocket_url: sub.config.websocket_url,
+                    is_running: sub.is_running,
+                    created_at: sub.created_at,
+                })
+                .collect();
+            Ok(HttpResponse::Ok().json(response))
+        }
         Err(e) => {
             eprintln!("Error fetching subscriptions: {}", e);
             Ok(HttpResponse::InternalServerError().json("Internal server error"))
         }
+    }
+}
+
+async fn create_subscription(
+    subscription_manager: web::Data<Arc<SubscriptionManager>>,
+    request: web::Json<CreateSubscriptionRequest>,
+) -> Result<HttpResponse> {
+    let websocket_url = request.websocket_url.clone()
+        .unwrap_or_else(|| "wss://api.mainnet-beta.solana.com".to_string());
+
+    let config = crate::modules::indexer::models::SubscriptionConfig {
+        program_ids: request.program_ids.clone(),
+        account_addresses: request.account_addresses.clone(),
+        websocket_url,
+    };
+
+    match subscription_manager.add_subscription(config).await {
+        Ok(subscription_id) => {
+            let subscription = subscription_manager.get_subscription_by_id(subscription_id).await;
+            if let Some(sub) = subscription {
+                let response = SubscriptionResponse {
+                    id: sub.id,
+                    name: request.name.clone(),
+                    program_ids: sub.config.program_ids,
+                    account_addresses: sub.config.account_addresses,
+                    websocket_url: sub.config.websocket_url,
+                    is_running: sub.is_running,
+                    created_at: sub.created_at,
+                };
+                Ok(HttpResponse::Created().json(response))
+            } else {
+                Ok(HttpResponse::InternalServerError().json("Failed to retrieve created subscription"))
+            }
+        }
+        Err(e) => {
+            eprintln!("Error creating subscription: {}", e);
+            Ok(HttpResponse::BadRequest().json(format!("Failed to create subscription: {}", e)))
+        }
+    }
+}
+
+async fn remove_subscription(
+    subscription_manager: web::Data<Arc<SubscriptionManager>>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse> {
+    let subscription_id = path.into_inner();
+    
+    match subscription_manager.remove_subscription(subscription_id).await {
+        Ok(_) => Ok(HttpResponse::Ok().json("Subscription removed successfully")),
+        Err(e) => {
+            eprintln!("Error removing subscription: {}", e);
+            Ok(HttpResponse::BadRequest().json(format!("Failed to remove subscription: {}", e)))
+        }
+    }
+}
+
+async fn get_subscription(
+    subscription_manager: web::Data<Arc<SubscriptionManager>>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse> {
+    let subscription_id = path.into_inner();
+    
+    match subscription_manager.get_subscription_by_id(subscription_id).await {
+        Some(subscription) => {
+            let response = SubscriptionResponse {
+                id: subscription.id,
+                name: format!("subscription_{}", subscription.id),
+                program_ids: subscription.config.program_ids,
+                account_addresses: subscription.config.account_addresses,
+                websocket_url: subscription.config.websocket_url,
+                is_running: subscription.is_running,
+                created_at: subscription.created_at,
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        None => Ok(HttpResponse::NotFound().json("Subscription not found")),
     }
 }
 

@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_nft_metadata_symbol ON nft_metadata(symbol);
 -- Create subscription_configs table for managing active subscriptions
 CREATE TABLE IF NOT EXISTS subscription_configs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
     program_ids TEXT[] NOT NULL DEFAULT '{}',
     account_addresses TEXT[] NOT NULL DEFAULT '{}',
     websocket_url VARCHAR(255) NOT NULL DEFAULT 'wss://api.mainnet-beta.solana.com',

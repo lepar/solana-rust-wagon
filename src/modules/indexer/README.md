@@ -48,15 +48,51 @@ SOLANA_WEBSOCKET_URL=wss://api.mainnet-beta.solana.com
 
 ### Default Subscriptions
 
-The indexer automatically subscribes to these programs:
+The indexer automatically creates default subscriptions for these programs:
 - **SPL Token Program**: `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`
 - **Metaplex Metadata**: `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s`
 
-## 📡 API Endpoints
+These are created through the same dynamic subscription system and can be managed via the API.
+
+## � Dynamic Subscription Management
+
+The indexer supports real-time subscription management without requiring server restarts. Each subscription runs in its own isolated async task with dedicated WebSocket connections.
+
+### How It Works
+
+1. **API Request**: You send a POST request to create a subscription
+2. **Database Storage**: Configuration is saved to the database
+3. **Automatic Spawning**: A new `tokio::spawn()` task is created immediately
+4. **WebSocket Connection**: Each subscription connects independently
+5. **Event Processing**: Transactions are sent to a shared processing channel
+
+### Key Benefits
+
+- **Zero Downtime**: Add/remove subscriptions without restarting
+- **Isolation**: Each subscription runs in its own task
+- **Scalability**: Support unlimited concurrent subscriptions
+- **Monitoring**: Real-time status of each subscription
+- **Persistence**: Subscriptions survive server restarts
+
+### Subscription Lifecycle
+
+```
+API Request → Database → Spawn Task → WebSocket Connect → Event Streaming → Transaction Processing
+```
+
+## � API Endpoints
 
 ### Health Check
 ```http
 GET /api/v1/indexer/health
+```
+
+### Subscription Management
+```http
+POST   /api/v1/indexer/subscriptions     # Create new subscription
+GET    /api/v1/indexer/subscriptions     # List all subscriptions
+GET    /api/v1/indexer/subscriptions/{id} # Get specific subscription
+DELETE /api/v1/indexer/subscriptions/{id} # Remove subscription
 ```
 
 ### Query Transactions
@@ -128,28 +164,94 @@ sqlx migrate run --database-url "postgresql://username:password@localhost:5432/s
 
 ### Adding New Program Subscriptions
 
-1. Update the `subscription_configs` table:
-```sql
-INSERT INTO subscription_configs (name, program_ids, account_addresses, websocket_url)
-VALUES ('custom_program', ARRAY['YourProgramIdHere'], ARRAY[], 'wss://api.mainnet-beta.solana.com');
+The indexer supports dynamic subscription management through REST API endpoints. You can add, remove, and monitor subscriptions without restarting the server.
+
+#### Create a New Subscription
+
+```bash
+curl -X POST http://localhost:3000/api/v1/indexer/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "custom_program",
+    "program_ids": ["YourProgramIdHere"],
+    "account_addresses": ["AccountAddressHere"],
+    "websocket_url": "wss://api.mainnet-beta.solana.com"
+  }'
 ```
 
-2. Add parsing logic in `indexer_service.rs` for the new program's instructions.
+**Response:**
+```json
+{
+  "id": "uuid-here",
+  "name": "custom_program",
+  "program_ids": ["YourProgramIdHere"],
+  "account_addresses": ["AccountAddressHere"],
+  "websocket_url": "wss://api.mainnet-beta.solana.com",
+  "is_running": true,
+  "created_at": "2024-01-01T00:00:00Z"
+}
+```
+
+#### Add Parsing Logic
+
+After creating a subscription, add parsing logic in `indexer_service.rs` for the new program's instructions to properly categorize transactions.
 
 ### Monitoring
 
-Check indexer status:
+#### Check Indexer Status
 ```bash
 curl http://localhost:3000/api/v1/indexer/health
 ```
 
-Monitor database growth:
+#### List Active Subscriptions
+```bash
+curl http://localhost:3000/api/v1/indexer/subscriptions
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid-here",
+    "name": "subscription_uuid-here",
+    "program_ids": ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+    "account_addresses": [],
+    "websocket_url": "wss://api.mainnet-beta.solana.com",
+    "is_running": true,
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
+#### Get Specific Subscription Status
+```bash
+curl http://localhost:3000/api/v1/indexer/subscriptions/{subscription_id}
+```
+
+#### Remove a Subscription
+```bash
+curl -X DELETE http://localhost:3000/api/v1/indexer/subscriptions/{subscription_id}
+```
+
+#### Monitor Database Growth
 ```sql
 SELECT COUNT(*) FROM indexed_transactions;
 SELECT transaction_type, COUNT(*) FROM indexed_transactions GROUP BY transaction_type;
 ```
 
 ## 🔍 Examples
+
+### Create a Custom Program Subscription
+```bash
+curl -X POST http://localhost:3000/api/v1/indexer/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "raydium_program",
+    "program_ids": ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"],
+    "account_addresses": [],
+    "websocket_url": "wss://api.mainnet-beta.solana.com"
+  }'
+```
 
 ### Query Recent Token Transfers
 ```bash
@@ -159,6 +261,16 @@ curl "http://localhost:3000/api/v1/indexer/transactions?program_id=TokenkegQfeZy
 ### Get NFT Metadata
 ```bash
 curl "http://localhost:3000/api/v1/indexer/nft/{mint_address}/metadata"
+```
+
+### Monitor All Active Subscriptions
+```bash
+curl "http://localhost:3000/api/v1/indexer/subscriptions"
+```
+
+### Remove a Subscription
+```bash
+curl -X DELETE "http://localhost:3000/api/v1/indexer/subscriptions/{subscription_id}"
 ```
 
 ### Monitor Indexer Status

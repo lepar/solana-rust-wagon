@@ -7,6 +7,7 @@ pub mod websocket;
 pub mod indexer_service;
 pub mod routes;
 pub mod background_job;
+pub mod subscription_manager;
 
 pub struct IndexerModule;
 
